@@ -1,6 +1,10 @@
 # trains the mnist handwritten digit model
 # user draws numbers and program runs model prediction to guess what the user has drawn
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 # tf
 from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
@@ -12,9 +16,6 @@ from PIL import Image
 # math
 import numpy
 import random
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 # utilities
 import time
