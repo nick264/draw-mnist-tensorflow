@@ -1,4 +1,5 @@
-
+# trains the mnist handwritten digit model
+# user draws numbers and program runs model prediction to guess what the user has drawn
 
 # tf
 from tensorflow.examples.tutorials.mnist import input_data
