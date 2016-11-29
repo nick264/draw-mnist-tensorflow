@@ -34,10 +34,10 @@ sess = None
 def motion(event):
     if DRAWING == False:
       return None
-
+    
     global lastX
     global lastY
-
+    
     x, y = event.x, event.y
     # print('this = [{} {}]; last [{} {}]'.format(x,y,lastX,lastY))
     if lastX is not None:
@@ -50,55 +50,76 @@ def motion(event):
 # check for keys until user finishes drawing
 # 'd': toggles drawing pen
 # 'f': indicates drawing is finished, exits
-def waitForKeys(win):
+def waitForKeys(win,drawingSize):
   global DRAWING
   global lastX
   global lastY
-  key = win.checkKey()
+  
+  rectangle = Rectangle(Point(0,0),Point(drawingSize,drawingSize))
+  rectangle.setOutline('')
+  rectangle.setFill('white')
+  rectangle.draw(win)
+  moveToBack(win,rectangle.id)
+  
+  while True:
+    key = win.checkKey()
 
-  if key != '':
-    print("Key pressed: {}".format(key))
+    if key != '':
+      print("Key pressed: {}".format(key))
 
-  if key == 'd':
-    if DRAWING == True:
+    if key == 'd':
+      if DRAWING == True:
+        DRAWING = False
+        rectangle.setFill('')
+        lastX, lastY = None, None
+      else:
+        DRAWING = True
+        rectangle.setFill('yellow')
+    if key == 'f':
       DRAWING = False
-      win.setBackground('white')
-      lastX, lastY = None, None
-    else:
-      DRAWING = True
-      win.setBackground('yellow')
+      rectangle.undraw()
+      return None
 
-  if key == 'f':
-    return None
+    time.sleep(0.2)
 
-  time.sleep(0.2)
-  waitForKeys(win)
-
+def moveToBack(win,targetItemId):
+  winItemsCopy = win.items[:]
+  
+  for item in winItemsCopy:
+    if item.id and item.id != targetItemId:
+      item.undraw()
+      item.draw(win)
 
 # lets user draw a number
 # returns the drawing as pixel data (list of floats with length size*size)
-def getDrawing(win,size):
+def getDrawing(win,drawingSize):
     global DRAWING
     global lastX
     global lastY
     DRAWING = False
     lastX, lastY = None, None
 
-    waitForKeys(win)
+    waitForKeys(win,drawingSize)
+    removeTarget(win)
 
     # save current window to postscript
     filename = "/tmp/drawing-ps-{}.ps".format(random.randint(0,100000))
     win.postscript(file=filename, colormode='color')
     
     # reset window
-    win.setBackground('white')
-    win.delete('all')
+    for x in win.items[:]:
+      x.undraw()
+      
+    addTarget(win)
     
     # convert postscript -> pdf -> bmp
     filename_pdf = filename.replace('.ps','.pdf')
     filename_bmp = filename.replace('.ps','.bmp')
     call(['ps2pdf',filename,filename_pdf])
-    call(['convert',filename_pdf, '-gravity', 'center', '-crop', '{}x{}+0+0'.format(size,size), '+repage', '-resize', '28x28', filename_bmp])
+    # call(['convert',filename_pdf, '-gravity', 'center', '-crop', '{}x{}+0+0'.format(size,size), '+repage', '-resize', '28x28', filename_bmp])
+    call(['convert',filename_pdf, '-gravity', 'center', '-crop', '{}x{}+0+0'.format(win.winfo_width(),win.winfo_height()), '+repage', '-gravity', 'northwest', '-crop', '{}x{}+0+0'.format(drawingSize,drawingSize), '-resize', '28x28', filename_bmp])
+    
+    print(filename_bmp)
     
     # get pixel data from bmp
     pix_data = readBMP(filename_bmp)
@@ -106,11 +127,63 @@ def getDrawing(win,size):
     return pix_data
 
 # drawing window
-def initWin(size):
-    win = GraphWin('Draw a Number', size, size)
+def initWin(drawingSize):
+    infoSize = 200
+    win = GraphWin('Draw a Number', drawingSize + infoSize, drawingSize)
     win.bind('<Motion>', motion)
     
+    addTarget(win)
+    
     return win
+
+def addTarget(win):
+    x1 = 25
+    y1 = 15
+    x2 = 75
+    y2 = 85
+    
+    points = [
+      [x1,y1],
+      [x2,y1],
+      [x2,y2],
+      [x1,y2]
+    ]
+    
+    extension = 0.1
+    targetIds = []
+    for idx in range(len(points)):
+      idxNext = ( idx + 1 ) % len(points)
+      idxPrev = ( idx - 1 ) % len(points)
+      
+      midNext = [ 
+        points[idx][0] + ( points[idxNext][0] - points[idx][0] ) * extension,
+        points[idx][1] + ( points[idxNext][1] - points[idx][1] ) * extension,
+      ]
+      
+      midPrev = [ 
+        points[idx][0] + ( points[idxPrev][0] - points[idx][0] ) * extension,
+        points[idx][1] + ( points[idxPrev][1] - points[idx][1] ) * extension,
+      ]
+      
+      lNext = Line(Point(points[idx][0],points[idx][1]),Point(midNext[0],midNext[1]))
+      lPrev = Line(Point(points[idx][0],points[idx][1]),Point(midPrev[0],midPrev[1]))
+      
+      lNext.setFill('red')
+      lPrev.setFill('red')
+      
+      lNext.draw(win)
+      lPrev.draw(win)
+      
+      targetIds += [lNext.id, lPrev.id]
+
+
+def removeTarget(win):
+  to_destroy = list(filter(lambda x: x.config['fill'] == 'red',win.items))
+  
+  for _ in to_destroy:
+    _.undraw()
+
+
 
 # # read and parse bitmap directly to extract pixel data
 # def readBMP(filename):
@@ -196,23 +269,27 @@ def main(_):
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     print(sess.run(accuracy, feed_dict={x: mnist.test.images,
                                         y_: mnist.test.labels}))
-    
 
-    size = 100
-    win = initWin(size)
+    drawingSize = 100
+    win = initWin(drawingSize)
 
     while True:
       # get drawing
-      image = getDrawing(win,size)
+      image = getDrawing(win,drawingSize)
       # image = mnist.train.images[random.randint(0,10000)]
           
       # evaluate image
-      for i in range(0,28):
-          for j in range(1,28):
+      for i in range(28):
+          for j in range(28):
                   print(int(round(image[i*28 + j])),end='')
           print('')
           
-      prediction = sess.run(tf.nn.softmax(y), feed_dict={x: [image]})    
+      prediction = sess.run(tf.nn.softmax(y), feed_dict={x: [image]})
+      
+      top_probs = sorted(list(zip(prediction[0],range(len(prediction[0])))),key=lambda x: x[0],reverse=True)
+      for i in range(3):
+        Text(Point(drawingSize + 25, i * 12 + 30), '{}: {:.1%}'.format(top_probs[i][1], top_probs[i][0])).draw(win)
+      
       for index in range(len(prediction[0])):
           print('{}: {:.1%}'.format(index, prediction[0][index]))
 
